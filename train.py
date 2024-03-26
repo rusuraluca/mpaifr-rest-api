@@ -7,7 +7,7 @@ from torchvision import transforms
 from dal import DAL
 from utils.data_utils import ImageFolderWithAgeGender
 from utils.train_utils import MetricsRecorder
-from agedb_data.meta import age_cutoffs, AGEDB, WANDB
+from data.meta import age_cutoffs, AGEDB, WANDB
 from itertools import chain
 import wandb
 

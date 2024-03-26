@@ -3,7 +3,7 @@ from torchvision import transforms as transforms
 import torch.nn.functional as functional
 from PIL import Image
 from dal import DAL
-from agedb_data.meta import AGEDB, WANDB
+from data.meta import AGEDB, WANDB
 
 
 def load_image_from_file(file, transform):
