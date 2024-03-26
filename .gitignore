@@ -1,0 +1,8 @@
+__pycache__/
+wandb/
+agedb/
+agedb_training/
+agedb_validation/
+results/
+.idea
+.DS_Store
