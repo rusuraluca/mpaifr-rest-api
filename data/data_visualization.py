@@ -1,37 +1,143 @@
 import os
 import matplotlib.pyplot as plt
 
-# Define age groups and their labels
-age_groups = [(0, 12), (13, 18), (19, 25), (26, 35), (36, 45), (46, 55), (56, 65), (66, float('inf'))]
-age_group_labels = ['0-12', '13-18', '19-25', '26-35', '36-45', '46-55', '56-65', '>=66']
 
-# Initialize stats dictionary
-stats = {'agedb_training': {label: {'m': 0, 'f': 0} for label in age_group_labels},
-         'agedb_validation': {label: {'m': 0, 'f': 0} for label in age_group_labels},
-         'agedb': {label: {'m': 0, 'f': 0} for label in age_group_labels}}
+class DatasetConfig(object):
+    _instance = None
+    _age_groups = None
+    _age_group_labels = None
+    _genders = None
 
-def process_directory(directory):
-    for person_folder in os.listdir(directory):
-        if not os.path.isdir(os.path.join(directory, person_folder)):
-            continue  # Skip files, process only directories
+    def __init__(self):
+        raise RuntimeError('Call instance() instead')
 
-        # Extract gender from folder name
-        _, gender = person_folder.rsplit('_', 1)
+    @classmethod
+    def instance(cls):
+        if cls._instance is None:
+            cls._instance = super(DatasetConfig, cls).__new__(cls)
+            cls._age_groups = [(0, 12), (13, 18), (19, 25), (26, 35), (36, 45), (46, 55), (56, 65), (66, float('inf'))]
+            cls._age_group_labels = ['0-12', '13-18', '19-25', '26-35', '36-45', '46-55', '56-65', '>=66']
+            cls._genders = ['m', 'f']
+        return cls._instance
 
-        for image_file in os.listdir(os.path.join(directory, person_folder)):
-            # Extract age from the file name
-            age = int(image_file.split('_')[-1].split('.')[0])
+    @property
+    def age_groups(self):
+        return self._age_groups
 
-            # Determine the age group
-            for (start, end), label in zip(age_groups, age_group_labels):
-                if start <= age <= end:
-                    stats[directory][label][gender] += 1
-                    break
+    @property
+    def age_group_labels(self):
+        return self._age_group_labels
+
+    @property
+    def genders(self):
+        return self._genders
 
 
-# Process each directory
-for dataset_type in ['agedb_training', 'agedb_validation', 'agedb']:
-    process_directory(dataset_type)
+class DatasetManager(object):
+    _instance = None
+    _stats = None
+
+    @classmethod
+    def instance(cls):
+        if cls._instance is None:
+            cls._instance = super(DatasetManager, cls).__new__(cls)
+            dataset_config = DatasetConfig.instance()
+            cls._stats = {
+                'agedb_training': {label: {'m': 0, 'f': 0} for label in dataset_config.age_group_labels},
+                'agedb_validation': {label: {'m': 0, 'f': 0} for label in dataset_config.age_group_labels},
+                'agedb': {label: {'m': 0, 'f': 0} for label in dataset_config.age_group_labels}
+            }
+        return cls._instance
+
+    @property
+    def stats(self):
+        return self._stats
+
+
+class DatasetFactory:
+    @staticmethod
+    def process_directory(directory):
+        dataset_manager = DatasetManager.instance()
+        dataset_config = DatasetConfig.instance()
+
+        for person_folder in os.listdir(directory):
+            if not os.path.isdir(os.path.join(directory, person_folder)):
+                continue
+
+            _, gender = person_folder.rsplit('_', 1)
+            if gender not in dataset_config.genders:
+                continue  # Ensures gender is either 'm' or 'f'
+
+            for image_file in os.listdir(os.path.join(directory, person_folder)):
+                age = int(image_file.split('_')[-1].split('.')[0])
+
+                for (start, end), label in zip(dataset_config.age_groups, dataset_config.age_group_labels):
+                    if start <= age <= end:
+                        dataset_key = directory.split('/')[-1]
+                        dataset_manager.stats[dataset_key][label][gender] += 1
+                        break
+
+    @staticmethod
+    def get_dataset(directory):
+        DatasetFactory.process_directory(directory)
+
+
+class AgeDistributionPlot:
+    def __init__(self, stats):
+        self.stats = stats
+
+    def plot(self):
+        age_group_labels = DatasetConfig.instance().age_group_labels
+        total_counts_per_age_group = {label: 0 for label in age_group_labels}
+
+        for dataset in self.stats.values():
+            for age_group, counts in dataset.items():
+                total_counts_per_age_group[age_group] += sum(counts.values())
+
+        ages = list(total_counts_per_age_group.keys())
+        counts = [total_counts_per_age_group[age_group] for age_group in ages]
+
+        plt.figure(figsize=(10, 6))
+        plt.bar(ages, counts, color='skyblue')
+        plt.xlabel('Age Groups')
+        plt.ylabel('Number of Individuals')
+        plt.title('Age Distribution Across Datasets')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
+
+
+class Statistics:
+    def __init__(self, strategy):
+        self._strategy = strategy
+
+    def execute(self):
+        self._strategy.plot()
+
+
+dataset_manager = DatasetManager.instance()
+DatasetFactory.get_dataset("agedb")
+age_distribution_plot = AgeDistributionPlot(dataset_manager.stats)
+statistics = Statistics(age_distribution_plot)
+statistics.execute()
+
+
+dataset_manager = DatasetManager.instance()
+DatasetFactory.get_dataset("agedb_training")
+age_distribution_plot = AgeDistributionPlot(dataset_manager.stats)
+statistics = Statistics(age_distribution_plot)
+statistics.execute()
+
+
+dataset_manager = DatasetManager.instance()
+DatasetFactory.get_dataset("agedb_validation")
+age_distribution_plot = AgeDistributionPlot(dataset_manager.stats)
+statistics = Statistics(age_distribution_plot)
+statistics.execute()
+
+
+"""
+
 
 # Plotting the statistics
 fig, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
@@ -59,3 +165,5 @@ plt.tight_layout()
 plt.show()
 
 print("Dataset visualization complete.")
+
+"""

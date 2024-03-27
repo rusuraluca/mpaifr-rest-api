@@ -6,14 +6,13 @@ from dal import DAL
 from data.meta import AGEDB, WANDB
 
 
-def load_image_from_file(file, transform):
-    image = Image.open(file).convert('RGB')
-    if transform is not None:
-        image = transform(image).unsqueeze(0)
-    return image
-
-
 def process_images_and_compute_similarity(file1, file2):
+    def load_image_from_file(file, transformation):
+        image = Image.open(file).convert('RGB')
+        if transformation is not None:
+            image = transformation(image).unsqueeze(0)
+        return image
+
     transform = transforms.Compose([
         transforms.Resize((112, 96)),
         transforms.ToTensor(),

@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class LayersConfig(object):
     """
-    Layers is a Singleton class that defines one instance of a list with the type of layers that the OE-CNN uses.
+    Layers is a Singleton class that defines one instance of a list with the type of layers that the Backbone CNN uses.
     """
     _instance = None
 

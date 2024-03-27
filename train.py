@@ -14,7 +14,7 @@ import wandb
 
 class Training:
     """
-
+    Facade design pattern for easy model training.
     """
     def __init__(self):
         self.config = WANDB
@@ -54,10 +54,6 @@ class Training:
 
 
 class Trainer:
-    """
-    A class to encapsulate training logic for the DAL model, handling both training and validation phases.
-    """
-
     def __init__(self, model, dataset, learning_rate=0.01, batch_size=512, lambdas=(0.1, 0.1, 0.1), print_freq=32):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = model.to(self.device)
@@ -144,17 +140,17 @@ class Trainer:
         self.gender_recorder.reset()
         self.id_recorder.reset()
 
-        for i, (images, labels, age_groups, genders) in enumerate(loader):
+        for i, (images, labels, age_groups, gender) in enumerate(loader):
             images = images.to(self.device)
             labels = labels.to(self.device)
             age_groups = age_groups.to(self.device)
-            genders = genders.to(self.device)
+            gender = gender.to(self.device)
             id_loss, id_accuracy, age_loss, age_accuracy, gender_loss, gender_accuracy, dal_loss \
-                = self.model(images, labels, age_groups, genders)
+                = self.model(images, labels, age_groups, gender)
 
             self.id_recorder.gulp(len(age_groups), id_loss.item(), id_accuracy.item())
             self.age_recorder.gulp(len(age_groups), age_loss.item(), age_accuracy.item())
-            self.gender_recorder.gulp(len(genders), gender_loss.item(), gender_accuracy.item())
+            self.gender_recorder.gulp(len(gender), gender_loss.item(), gender_accuracy.item())
 
             loss = self.compute_loss(
                 id_loss,
@@ -207,13 +203,6 @@ class Trainer:
         model_path = os.path.join(self.dataset['save_root'], 'model_epoch_{}.pth'.format(epoch))
         torch.save(self.model.state_dict(), model_path)
         print(f"Model saved to {model_path}")
-
-    def wandb_save_model(self, epoch):
-        model_filename = f'model_epoch_{epoch}.pth'
-        model_path = os.path.join(wandb.run.dir, model_filename)
-        torch.save(self.model.state_dict(), model_path)
-        print(f"Model saved to {model_path}")
-        wandb.save(model_path)
 
     def load_data(self, train=True):
         path_key = 'training_root' if train else 'validation_root'

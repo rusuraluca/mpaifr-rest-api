@@ -5,7 +5,7 @@ import torch.nn.functional as functional
 
 class MarginLossFactory:
     """
-    A factory class for creating margin loss objects based on a given loss head type.
+    Factory design pattern class for creating margin loss objects based on a given loss head type.
 
     This class simplifies the process of initializing different types of margin losses
     by encapsulating the decision-making process within a single method.

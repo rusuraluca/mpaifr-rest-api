@@ -1,6 +1,6 @@
 class MetricsRecorder:
     """
-    A utility class for recording and computing aggregated metrics such as loss and accuracy.
+    A utility class for recording and computing loss and accuracy.
     """
     def __init__(self):
         self.total_samples = 0
