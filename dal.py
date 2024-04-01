@@ -3,8 +3,48 @@ import torch.nn as nn
 import torch.nn.functional as functional
 from backbone_cnn import BackboneCNN
 from loss_functions import MarginLossFactory
-from rfm import RFM
 from utils.model_utils import accuracy
+
+
+class RFM(nn.Module):
+    """
+    Residual factorization Module (RFM) to map the initial face features
+    to form the age-dependent feature through sequential 2 [FC +ReLU]
+    and the gender-dependent feature through sequential 2 [FC +ReLU],
+    and the residual part is regarded as the identity-dependent feature.
+    """
+
+    def __init__(self, input_dimension):
+        """
+        Initializes the Residual Factorization Module with the given input dimensionality.
+        :param input_dimension: size of the input feature vector
+        """
+        super(RFM, self).__init__()
+        self.age_transform = nn.Sequential(
+            nn.Linear(input_dimension, input_dimension),
+            nn.ReLU(inplace=True),
+            nn.Linear(input_dimension, input_dimension),
+            nn.ReLU(inplace=True),
+        )
+
+        self.gender_transform = self.gender_transform = nn.Sequential(
+            nn.Linear(input_dimension, input_dimension),
+            nn.ReLU(inplace=True),
+            nn.Linear(input_dimension, input_dimension),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, input_tensor):
+        """
+        Passes the input through the sequence of transformations defined.
+        :param input_tensor: input feature vector
+        :return:
+        """
+        age_features = self.age_transform(input_tensor)
+        gender_features = self.gender_transform(input_tensor)
+        id_features = input_tensor - age_features - gender_features
+
+        return id_features, age_features, gender_features
 
 
 class DALR(nn.Module):
@@ -50,15 +90,16 @@ class DALR(nn.Module):
         gender_var = gender_predictions.var(dim=0) + 1e-6
 
         # squared correlation coefficient between each pair of features
-        id_age_corr = ((age_predictions - age_mean) * (id_predictions - id_mean)).mean(dim=0).pow(2) / \
-                      (age_var * id_var)
-        id_gender_corr = ((gender_predictions - gender_mean) * (id_predictions - id_mean)).mean(dim=0).pow(2) / \
-                         (gender_var * id_var)
-        age_gender_corr = ((age_predictions - age_mean) * (gender_predictions - gender_mean)).mean(dim=0).pow(2) / \
-                          (age_var * gender_var)
+        id_age_corr = ((age_predictions - age_mean) * (id_predictions - id_mean)).mean(dim=0).pow(2) / (
+                age_var * id_var)
+        id_gender_corr = ((gender_predictions - gender_mean) * (id_predictions - id_mean)).mean(dim=0).pow(2) / (
+                gender_var * id_var)
+        age_gender_corr = ((age_predictions - age_mean) * (gender_predictions - gender_mean)).mean(dim=0).pow(2) / (
+                age_var * gender_var)
 
-        # average the correlation coefficients for combined measure
+        # average the correlation coefficients for a combined measure
         correlation_coefficient = (id_age_corr + id_gender_corr + age_gender_corr) / 3
+
         return correlation_coefficient
 
 
@@ -74,7 +115,8 @@ class DAL(nn.Module):
     Decorrelated adversarial learning for age-invariant face recognition, 2019.
     """
 
-    def __init__(self, loss_head, num_classes, embedding_dimension=512, initializer=None):
+    def __init__(self, loss_head, num_classes, embedding_dimension=512,
+                 initializer={'method': nn.init.kaiming_normal_, 'params': {}}):
         """
         Initializes the DAL model with specified configurations.
         :param loss_head: type of margin-based loss function to use for training
@@ -94,11 +136,15 @@ class DAL(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(embedding_dimension, embedding_dimension),
             nn.ReLU(inplace=True),
-            nn.Linear(embedding_dimension, 8)
+            nn.Linear(embedding_dimension, 8),
         )
 
         self.gender_classifier = nn.Sequential(
-            nn.Linear(embedding_dimension, 2)
+            nn.Linear(embedding_dimension, embedding_dimension),
+            nn.ReLU(inplace=True),
+            nn.Linear(embedding_dimension, embedding_dimension),
+            nn.ReLU(inplace=True),
+            nn.Linear(embedding_dimension, 2),
         )
 
         self.id_criterion = nn.CrossEntropyLoss()

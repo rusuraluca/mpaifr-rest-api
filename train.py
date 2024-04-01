@@ -1,15 +1,15 @@
+import os
+from itertools import chain
+
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import os
 from torchvision import transforms
 
-from dal import DAL
-from utils.data_utils import ImageFolderWithAgeGender
-from utils.train_utils import MetricsRecorder
-from data.meta import age_cutoffs, AGEDB, WANDB
-from itertools import chain
 import wandb
+from dal import DAL
+from meta import age_cutoffs, AGEDB, WANDB
+from utils.data_utils import ImageFolderWithAgeGender
 
 
 class Training:
@@ -33,8 +33,9 @@ class Training:
             num_classes=self.dataset["num_classes"],
             embedding_dimension=self.config["embedding_dimension"],
         )
-        self.model.load_state_dict(torch.load(self.config["model"]))
-        print(f'Loaded weights from {self.config["model"]}')
+        if self.config["model"]:
+            self.model.load_state_dict(torch.load(self.config["model"]))
+            print(f'Loaded weights from {self.config["model"]}')
 
     def train(self):
         trainer = Trainer(
@@ -48,14 +49,15 @@ class Training:
         trainer.train(epochs=self.config["epochs"])
 
         artifact = wandb.Artifact("model", type="model")
-        artifact.add_file(self.config["model"])
+        artifact.add_file(self.config["save_model"])
         wandb.log_artifact(artifact)
         wandb.finish()
 
 
+
 class Trainer:
-    def __init__(self, model, dataset, learning_rate=0.01, batch_size=512, lambdas=(0.1, 0.1, 0.1), print_freq=32):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    def __init__(self, model, dataset, learning_rate=0.01, batch_size=128, lambdas=(0.1, 0.1, 0.1), print_freq=26):
+        self.device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
         self.model = model.to(self.device)
         self.dataset = dataset
         self.batch_size = batch_size
@@ -69,7 +71,6 @@ class Trainer:
                 self.model.RFM.parameters(),
                 self.model.margin_loss.parameters(),
                 self.model.backboneCNN.parameters(),
-                self.model.DALR.parameters()
             ),
             lr=learning_rate,
             momentum=0.9
@@ -81,18 +82,20 @@ class Trainer:
             momentum=0.9
         )
 
-        self.transforms = transforms.Compose([
+        self.transforms_training = transforms.Compose([
             transforms.Resize((112, 96)),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
 
-        self.trainingDAL = False
+        self.transforms_validation = transforms.Compose([
+            transforms.Resize((112, 96)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
 
-        self.id_recorder = MetricsRecorder()
-        self.age_recorder = MetricsRecorder()
-        self.gender_recorder = MetricsRecorder()
+        self.trainingDAL = False
 
     def set_train_mode(self, state):
         """
@@ -124,7 +127,7 @@ class Trainer:
                 if param.grad is not None:
                     param.grad = -param.grad
 
-    def compute_loss(self, id_loss, id_accuracy, age_loss, age_accuracy, gender_loss, gender_accuracy, dal_loss):
+    def compute_loss(self, id_loss, age_loss, gender_loss, dal_loss):
         total_loss = id_loss + self.lambdas[0] * age_loss + self.lambdas[1] * gender_loss + self.lambdas[2] * dal_loss
         return total_loss
 
@@ -136,38 +139,41 @@ class Trainer:
         phase = 'Training' if train else 'Validation'
         self.model.train() if train else self.model.eval()
 
-        self.age_recorder.reset()
-        self.gender_recorder.reset()
-        self.id_recorder.reset()
-
-        for i, (images, labels, age_groups, gender) in enumerate(loader):
-            images = images.to(self.device)
-            labels = labels.to(self.device)
-            age_groups = age_groups.to(self.device)
-            gender = gender.to(self.device)
-            id_loss, id_accuracy, age_loss, age_accuracy, gender_loss, gender_accuracy, dal_loss \
-                = self.model(images, labels, age_groups, gender)
-
-            self.id_recorder.gulp(len(age_groups), id_loss.item(), id_accuracy.item())
-            self.age_recorder.gulp(len(age_groups), age_loss.item(), age_accuracy.item())
-            self.gender_recorder.gulp(len(gender), gender_loss.item(), gender_accuracy.item())
-
-            loss = self.compute_loss(
-                id_loss,
-                id_accuracy,
-                age_loss,
-                age_accuracy,
-                gender_loss,
-                gender_accuracy,
-                dal_loss
-            )
-
+        for i, (images, labels, age_groups, genders) in enumerate(loader):
             if train:
                 if i % 70 == 0:
                     self.set_train_mode(True)  # maximize canonical correlation
                 elif i % 70 == 20:
                     self.set_train_mode(False)  # minimize feature correlation
 
+            images = images.to(self.device)
+            labels = labels.to(self.device)
+            age_groups = age_groups.to(self.device)
+            genders = genders.to(self.device)
+
+            if train:
+                id_loss, id_accuracy, age_loss, age_accuracy, gender_loss, gender_accuracy, dal_loss \
+                    = self.model(images, labels, age_groups, genders)
+
+                loss = self.compute_loss(
+                    id_loss,
+                    age_loss,
+                    gender_loss,
+                    dal_loss
+                )
+            else:
+                with torch.no_grad():
+                    id_loss, id_accuracy, age_loss, age_accuracy, gender_loss, gender_accuracy, dal_loss \
+                        = self.model(images, labels, age_groups, genders)
+
+                    loss = self.compute_loss(
+                        id_loss,
+                        age_loss,
+                        gender_loss,
+                        dal_loss
+                    )
+
+            if train:
                 if self.trainingDAL:
                     # feature correlation minimization
                     self.optimizer_DAL.zero_grad()
@@ -180,29 +186,19 @@ class Trainer:
                     loss.backward()
                     self.optimizer.step()
 
-            if i % self.print_freq == 0:
-                print(f"{phase} - Batch {i}/{len(loader)}: "
-                      f"Total Loss {loss.item()}, "
-                      f"Id Loss {id_loss.item():.4f}, Acc {id_accuracy.item():.4f}, "
-                      f"Age Loss {age_loss.item():.4f}, Acc {age_accuracy.item():.4f}, "
-                      f"Gender Loss {gender_loss.item():.4f}, Acc {gender_accuracy.item():.4f}, "
-                      f"DAL Loss {dal_loss.item():.8f} \n"
-                      )
-            if not train:
-                print(f"Avg Validation Meta: "
-                      f"Acc Id {self.id_recorder.total_correct}\n")
-
-        # average training meta after epoch
-        print(f"Avg Training Meta: "
-              f"Id {self.id_recorder.excrete().result()}, "
-              f"Age {self.age_recorder.excrete().result()}, "
-              f"Gender {self.gender_recorder.excrete().result()}\n"
-              )
-
-    def save_model(self, epoch):
-        model_path = os.path.join(self.dataset['save_root'], 'model_epoch_{}.pth'.format(epoch))
-        torch.save(self.model.state_dict(), model_path)
-        print(f"Model saved to {model_path}")
+            metrics = {
+                f"{phase}/total_loss": loss.item(),
+                f"{phase}/id_loss": id_loss.item(),
+                f"{phase}/id_accuracy": id_accuracy.item(),
+                f"{phase}/age_loss": age_loss.item(),
+                f"{phase}/age_accuracy": age_accuracy.item(),
+                f"{phase}/gender_loss": gender_loss.item(),
+                f"{phase}/gender_accuracy": gender_accuracy.item(),
+                f"{phase}/dal_loss": dal_loss.item(),
+                f"{phase}/progress": i / len(loader)
+            }
+            print(metrics)
+            wandb.log(metrics)
 
     def load_data(self, train=True):
         path_key = 'training_root' if train else 'validation_root'
@@ -212,15 +208,29 @@ class Trainer:
             print(f"Dataset path {dataset_path} does not exist.")
             return None
 
-        dataset = ImageFolderWithAgeGender(
-            pattern=self.dataset['pattern'],
-            position_age=self.dataset['position_age'],
-            position_gender=self.dataset['position_gender'],
-            cutoffs=age_cutoffs,
-            root=dataset_path,
-            transform=self.transforms)
+        if train:
+            dataset = ImageFolderWithAgeGender(
+                pattern=self.dataset['pattern'],
+                position_age=self.dataset['position_age'],
+                position_gender=self.dataset['position_gender'],
+                cutoffs=age_cutoffs,
+                root=dataset_path,
+                transform=self.transforms_training)
+        else:
+            dataset = ImageFolderWithAgeGender(
+                pattern=self.dataset['pattern'],
+                position_age=self.dataset['position_age'],
+                position_gender=self.dataset['position_gender'],
+                cutoffs=age_cutoffs,
+                root=dataset_path,
+                transform=self.transforms_validation)
 
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+    def save_model(self, epoch):
+        model_path = os.path.join(self.dataset['save_root'], 'model_epoch_{}.pth'.format(epoch))
+        torch.save(self.model.state_dict(), model_path)
+        print(f"Model saved to {model_path}")
 
     def train(self, epochs):
         training_loader = self.load_data(train=True)

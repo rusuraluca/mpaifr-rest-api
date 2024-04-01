@@ -15,9 +15,11 @@ class ImageFolderWithAgeGender(ImageFolder):
         img, label = super().__getitem__(index)
         path = self.imgs[index][0]
         age = self.path2age(path, self.pattern, self.position_age)
-        gender = self.path2gender(path, self.pattern, self.position_gender)
         age_group = self.find_age_group(age)
-        return img, label, age_group, gender
+        gender = self.path2gender(path, self.pattern, self.position_gender)
+        gender_group = self.find_gender_group(gender)
+        # print(f"Label {label} Path {path} Age Group {age_group} Gender Group {gender_group}")
+        return img, label, age_group, gender_group
 
     @staticmethod
     def path2age(path, pat, pos):
@@ -29,6 +31,11 @@ class ImageFolderWithAgeGender(ImageFolder):
         name_gender_dir = components[-2]
         gender_str = re.split(pat, name_gender_dir)[pos]
         return 0 if gender_str.lower().startswith('m') else 1
+
+    @staticmethod
+    def find_gender_group(gender):
+        gender_group = gender
+        return gender_group
 
     def find_age_group(self, age):
         age_group = next((i for i, cutoff in enumerate(self.cutoffs) if age <= cutoff), len(self.cutoffs))

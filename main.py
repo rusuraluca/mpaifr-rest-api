@@ -1,3 +1,5 @@
+import torch.backends.mps
+
 from train import Training
 
 

@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Face Recognition API"
+    return "MPAIFR REST API"
 
 
 @app.route('/images_similarity', methods=['POST'])
