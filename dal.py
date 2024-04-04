@@ -27,7 +27,7 @@ class RFM(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        self.gender_transform = self.gender_transform = nn.Sequential(
+        self.gender_transform = nn.Sequential(
             nn.Linear(input_dimension, input_dimension),
             nn.ReLU(inplace=True),
             nn.Linear(input_dimension, input_dimension),
@@ -115,11 +115,10 @@ class DAL(nn.Module):
     Decorrelated adversarial learning for age-invariant face recognition, 2019.
     """
 
-    def __init__(self, loss_head, num_classes, embedding_dimension=512,
-                 initializer={'method': nn.init.kaiming_normal_, 'params': {}}):
+    def __init__(self, loss_head, num_classes, embedding_dimension=512, initializer=None):
         """
         Initializes the DAL model with specified configurations.
-        :param loss_head: type of margin-based loss function to use for training
+        :param loss_head: type of margin-based loss function to use for data_training
         :param num_classes: number of identity classes in the dataset
         :param embedding_dimension: dimensionality of the feature embeddings produced by the Backbone CNN
         :param initializer: initialization method for the Backbone CNN

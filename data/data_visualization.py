@@ -8,12 +8,12 @@ from utils.data_utils import ImageFolderWithAgeGender
 
 class AnalysisStrategy(ABC):
     @abstractmethod
-    def analyze(self, ages, genders):
+    def analyze(self, labels, ages, genders):
         pass
 
 
 class AgeGenderDistributionAnalysis(AnalysisStrategy):
-    def analyze(self, ages, genders):
+    def analyze(self, labels, ages, genders):
         age_gender_groups = {
             0: {'Label': '0-12', 'Male': 0, 'Female': 0},
             1: {'Label': '13-18', 'Male': 0, 'Female': 0},
@@ -44,7 +44,7 @@ class AgeGenderDistributionAnalysis(AnalysisStrategy):
         ax.bar(index + bar_width, female_counts, bar_width, label='Female', color='mediumpurple')
 
         ax.set_xlabel('Age Group')
-        ax.set_ylabel('Count')
+        ax.set_ylabel('Image Count')
         ax.set_title('Age-Gender Distribution')
         ax.set_xticks(index + bar_width / 2)
         ax.set_xticklabels(age_groups)
@@ -52,6 +52,79 @@ class AgeGenderDistributionAnalysis(AnalysisStrategy):
 
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
+        plt.show()
+
+
+class GenderDistributionAnalysis(AnalysisStrategy):
+    def analyze(self, labels, ages, genders):
+        male_count = sum(g == 0 for g in genders)
+        female_count = sum(g == 1 for g in genders)
+        total_count = male_count + female_count
+
+        if total_count == 0:
+            print("No data available for analysis.")
+            return
+
+        male_percentage = (male_count / total_count) * 100
+        female_percentage = (female_count / total_count) * 100
+
+        labels = 'Male', 'Female'
+        sizes = [male_percentage, female_percentage]
+        colors = ['dodgerblue', 'mediumpurple']
+        explode = (0.1, 0)
+
+        plt.figure(figsize=(6, 6))
+        plt.pie(sizes, explode=explode, labels=labels, colors=colors,
+                autopct='%1.1f%%', shadow=True, startangle=140)
+        plt.title(f'Gender Distribution: Male ({male_count}) vs. Female ({female_count})')
+        plt.axis('equal')
+        plt.show()
+
+
+class AgeDistributionAnalysis(AnalysisStrategy):
+    def analyze(self, labels, ages, genders):
+        age_categories = {
+            '0-12': 0,
+            '13-18': 0,
+            '19-25': 0,
+            '26-35': 0,
+            '36-45': 0,
+            '46-55': 0,
+            '56-65': 0,
+            '65+': 0
+        }
+
+        for age in ages:
+            if age == 0:
+                age_categories['0-12'] += 1
+            elif age == 1:
+                age_categories['13-18'] += 1
+            elif age == 2:
+                age_categories['19-25'] += 1
+            elif age == 3:
+                age_categories['26-35'] += 1
+            elif age == 4:
+                age_categories['36-45'] += 1
+            elif age == 5:
+                age_categories['46-55'] += 1
+            elif age == 6:
+                age_categories['56-65'] += 1
+            else:
+                age_categories['65+'] += 1
+
+        labels = list(age_categories.keys())
+        sizes = list(age_categories.values())
+        colors = ['lightblue', 'lightcoral', 'lightgreen', 'lightyellow', 'orange', 'lightred', 'mediumpurple', 'dodgerblue']
+
+        labels_with_data = [label for label, size in zip(labels, sizes) if size > 0]
+        sizes_with_data = [size for size in sizes if size > 0]
+        colors_with_data = [colors[i] for i, size in enumerate(sizes) if size > 0]
+
+        plt.figure(figsize=(8, 8))
+        plt.pie(sizes_with_data, labels=labels_with_data, colors=colors_with_data,
+                autopct='%1.1f%%', shadow=True, startangle=140)
+        plt.title('Age Distribution')
+        plt.axis('equal')
         plt.show()
 
 
@@ -88,13 +161,27 @@ class DatasetAnalysisContext:
 
         ages = []
         genders = []
-        for _, _, age_group, gender_group in loader:
+        labels = []
+        for _, label, age_group, gender_group in loader:
             ages.extend(age_group.numpy())
             genders.extend(gender_group.numpy())
-        self.strategy.analyze(ages, genders)
+            labels.extend(label.numpy())
+        self.strategy.analyze(labels, ages, genders)
 
 
 if __name__ == "__main__":
-    path = 'agedb/'
+    path = '../data_training'
     context = DatasetAnalysisContext(AgeGenderDistributionAnalysis(), path)
+    context.perform_analysis()
+    context.set_strategy(GenderDistributionAnalysis())
+    context.perform_analysis()
+    context.set_strategy(AgeDistributionAnalysis())
+    context.perform_analysis()
+
+    path = '../data_validation'
+    context = DatasetAnalysisContext(AgeGenderDistributionAnalysis(), path)
+    context.perform_analysis()
+    context.set_strategy(GenderDistributionAnalysis())
+    context.perform_analysis()
+    context.set_strategy(AgeDistributionAnalysis())
     context.perform_analysis()

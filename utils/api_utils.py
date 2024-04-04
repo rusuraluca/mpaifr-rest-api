@@ -2,16 +2,19 @@ import torch
 from torchvision import transforms as transforms
 import torch.nn.functional as functional
 from PIL import Image
-from dal import DAL
-from meta import AGEDB, WANDB
 import os
 
 
-def process_images_and_compute_similarity(file1, file2):
-    def load_image_from_file(file, transformation):
+def process_images_and_compute_similarity(model, file1, file2):
+    def load_image_from_file(file, transformation, save_path=None):
         image = Image.open(file).convert('RGB')
         if transformation is not None:
-            image = transformation(image).unsqueeze(0)
+            image = transformation(image)
+            if save_path:
+                # Convert tensor back to PIL Image to save file
+                save_image = transforms.ToPILImage()(image)
+                save_image.save(save_path)
+            image = image.unsqueeze(0)
         return image
 
     transform = transforms.Compose([
@@ -22,28 +25,24 @@ def process_images_and_compute_similarity(file1, file2):
 
     transform_flipped = transforms.Compose([
         transforms.Resize((112, 96)),
-        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomHorizontalFlip(p=1.0),
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
-    config = WANDB
-    dataset = AGEDB
-    model = DAL(
-        loss_head=config["loss_head"],
-        num_classes=dataset["num_classes"],
-        embedding_dimension=config["embedding_dimension"],
-    )
+    os.makedirs("test", exist_ok=True)
 
-    model.load_state_dict(torch.load(config["model"]))
-    print(f'Loaded weights from {config["model"]}')
-    model.eval()
+    # Define paths for saving images
+    image1_path = os.path.join("test", "image1_transformed.jpg")
+    image2_path = os.path.join("test", "image2_transformed.jpg")
+    image1_flipped_path = os.path.join("test", "image1_flipped.jpg")
+    image2_flipped_path = os.path.join("test", "image2_flipped.jpg")
 
-    image1 = load_image_from_file(file1, transform)
-    image2 = load_image_from_file(file2, transform)
-
-    image1_flipped = load_image_from_file(file1, transform_flipped)
-    image2_flipped = load_image_from_file(file2, transform_flipped)
+    # Load and transform images, then save them
+    image1 = load_image_from_file(file1, transform, image1_path)
+    image2 = load_image_from_file(file2, transform, image2_path)
+    image1_flipped = load_image_from_file(file1, transform_flipped, image1_flipped_path)
+    image2_flipped = load_image_from_file(file2, transform_flipped, image2_flipped_path)
 
     with torch.no_grad():
         features1 = model(image1, return_embeddings=True)
@@ -51,5 +50,5 @@ def process_images_and_compute_similarity(file1, file2):
         features1_flipped = model(image1_flipped, return_embeddings=True)
         features2_flipped = model(image2_flipped, return_embeddings=True)
 
-    similarity = functional.cosine_similarity(features1+features1_flipped, features2+features2_flipped)
+    similarity = functional.cosine_similarity(features1 + features1_flipped, features2 + features2_flipped)
     return similarity.item()

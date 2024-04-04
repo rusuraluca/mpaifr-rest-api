@@ -75,7 +75,7 @@ class BatchNormConvReLU:
     batch normalization, convolution, and ReLU activation.
 
     This class creates a sequence of layers that is frequently used to preprocess inputs before passing them
-    through subsequent layers of a neural network. By combining these layers, it aims to improve training stability,
+    through subsequent layers of a neural network. By combining these layers, it aims to improve data_training stability,
     accelerate convergence, and enable the use of higher learning rates.
     """
     def __init__(self, in_channels, out_channels):
@@ -231,7 +231,7 @@ class BackboneCNN(nn.Module):
         Passes the input through the sequential container model,
         then it is renormalized to ensure that the output tensor's 2-norm does not exceed the 1e-5 threshold
         then it is scaled by 1e5
-        all to ensure that the output is within a certain range to improve the training stability.
+        all to ensure that the output is within a certain range to improve the data_training stability.
         :param in_tensor: input tensor to be passed through the model
         :return: output tensor
         """
