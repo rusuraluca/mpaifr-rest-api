@@ -6,3 +6,10 @@ agedb_validation/
 results/
 .idea
 .DS_Store
+data_training/
+data_validation/
+cafgender/
+fgnet/
+fgnet_copy/
+fgnet_training/
+fgnet_validation/
